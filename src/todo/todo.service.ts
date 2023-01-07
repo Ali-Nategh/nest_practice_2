@@ -1,41 +1,65 @@
 import { HttpException, HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { CreateTodoDto } from './dto/create-todo.dto';
+import { UpdateTodoDto } from './dto/update-todo.dto';
+import { Tag } from './entities/tag.entity';
 import { Todo } from './entities/todo.entity';
 
 @Injectable()
 export class TodoService {
-    private todos: Todo[] = [
-        {
-            id: 1,
-            title: 'test title',
-        },
-    ];
+
+    constructor(
+        @InjectRepository(Todo)
+        private readonly todoRepository: Repository<Todo>,
+        @InjectRepository(Tag)
+        private readonly tagRepository: Repository<Tag>,
+    ) { }
 
     findAll() {
-        return this.todos;
+        return this.todoRepository.find({
+            relations: ['tags'],
+        });
     }
 
-    findOne(id: string) {
-        const todo = this.todos.find(item => item.id === +id);
+    async findOne(id: string) {
+        const todo = await this.todoRepository.findOne({ where: { id: +id }, relations: ['tags'], });
         // if (!todo) throw new HttpException(`todo #${id} not found`, HttpStatus.NOT_FOUND)
-        if (!todo) throw new NotFoundException(`todo #${id} not found`)
+        if (!todo) throw new NotFoundException(`todo #${id} not found`);
         return todo
     }
 
-    create(createTodoDto: any) {
-        this.todos.push(createTodoDto)
+    async create(createTodoDto: CreateTodoDto) {
+        const tags = await Promise.all(createTodoDto.tags.map(name => this.preloadTagByName(name)));
+
+        const todo = this.todoRepository.create({
+            ...createTodoDto,
+            tags,
+        }
+        );
+        return this.todoRepository.save(todo);
     }
 
-    update(id: string, updateTodoDto: any) {
-        const existingTodo = this.findOne(id);
-        if (existingTodo) {
-            // update existing entity
-        }
+    async update(id: string, updateTodoDto: UpdateTodoDto) {
+        const tags = updateTodoDto.tags && await Promise.all(updateTodoDto.tags.map(name => this.preloadTagByName(name)));
+
+        const todo = await this.todoRepository.preload({
+            id: +id,
+            ...updateTodoDto,
+            tags,
+        });
+        if (!todo) throw new NotFoundException(`Todo #${id} not found`);
+        return this.todoRepository.save(todo);
     }
 
-    remove(id: string) {
-        const todoIndex = this.todos.findIndex(item => item.id === +id);
-        if (todoIndex >= 0) {
-            this.todos.splice(todoIndex, 1);
-        }
+    async remove(id: string) {
+        const todo = await this.findOne(id);
+        return this.todoRepository.remove(todo);
+    }
+
+    private async preloadTagByName(name: string): Promise<Tag> {
+        const existingTag = await this.tagRepository.findOne({ where: { name } });
+        if (existingTag) return existingTag;
+        return this.tagRepository.create({ name });
     }
 }
