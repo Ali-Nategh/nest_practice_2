@@ -1,5 +1,6 @@
 import { HttpException, HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { PaginationQueryDto } from 'src/common/dto/pagination-query.dto/pagination-query.dto';
 import { Repository } from 'typeorm';
 import { CreateTodoDto } from './dto/create-todo.dto';
 import { UpdateTodoDto } from './dto/update-todo.dto';
@@ -16,8 +17,13 @@ export class TodoService {
         private readonly tagRepository: Repository<Tag>,
     ) { }
 
-    findAll() {
-        return this.todoRepository.find({ relations: ['tags'] });
+    findAll(paginationQuery: PaginationQueryDto) {
+        const { limit, offset } = paginationQuery
+        return this.todoRepository.find({
+            relations: ['tags'],
+            skip: offset,
+            take: limit,
+        });
     }
 
     async findOne(id: string) {
